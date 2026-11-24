@@ -4,7 +4,17 @@
   const K = window.Kakeibo;
   const U = K.utils;
 
-  const SCREEN_TITLES = { home: 'ホーム', input: '入力', list: '明細', summary: '集計', balance: '残り', settings: '設定' };
+  const SCREEN_TITLES = {
+    home: 'ホーム',
+    input: '入力',
+    list: '明細',
+    summary: '集計',
+    balance: '残り',
+    settings: '設定',
+    quick: '家計簿入力',
+    sheet: '生活収支表',
+    history: '履歴',
+  };
 
   const state = {
     screen: 'home',
@@ -22,6 +32,15 @@
 
     for (const btn of document.querySelectorAll('.bottom-nav__btn')) {
       const active = btn.dataset.screen === state.screen;
+      btn.classList.toggle('is-active', active);
+      if (active) btn.setAttribute('aria-current', 'page');
+      else btn.removeAttribute('aria-current');
+    }
+
+    // 「家計簿入力」画面では、上のヘッダーも隠す（css/quick.css）
+    document.body.classList.toggle('is-quick', state.screen === 'quick');
+    for (const btn of document.querySelectorAll('.main-nav__btn')) {
+      const active = btn.dataset.main === state.screen;
       btn.classList.toggle('is-active', active);
       if (active) btn.setAttribute('aria-current', 'page');
       else btn.removeAttribute('aria-current');
@@ -66,7 +85,14 @@
       btn.addEventListener('click', () => navigate(btn.dataset.screen));
     }
     document.getElementById('fab').addEventListener('click', () => navigate('input'));
-    navigate('home');
+    for (const btn of document.querySelectorAll('.main-nav__btn')) {
+      btn.addEventListener('click', () => {
+        if (K.screens[btn.dataset.main]) navigate(btn.dataset.main);
+        else toast('この画面は次の段階で作ります');
+      });
+    }
+    // 開いたときは、いつも「家計簿入力」（支出・収入の入力画面）から始める（これがメイン画面）
+    navigate('quick');
   }
 
   K.app = { state, navigate, setMonth, rerender: render, toast };

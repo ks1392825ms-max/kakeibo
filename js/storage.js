@@ -4,11 +4,15 @@
 //
 // 保存されるデータの形：
 // {
-//   version: 1,                 データ形式の番号（形を変えたときの自動変換に使う）
+//   version: 2,                 データ形式の番号（形を変えたときの自動変換に使う）
 //   categories: [...],          カテゴリー
-//   transactions: [...],        収入・支出の記録
+//   transactions: [...],        収入・支出の記録（今までの入力画面）
+//   quickEntries: [...],        「家計簿入力」の記録（1日1件。version 2 で追加）
 //   settings: {...}             設定
 // }
+// quickEntries の1件の形：
+// { id: "q-2026-11-24"（日付から作るので、同じ日は必ず1件）, date, amounts: { 項目id: 金額 },
+//   openingCarry: いちばん最初の記録の「前回の持ち越し金」, createdAt, updatedAt, deleted }
 // すべての記録に id / createdAt / updatedAt / deleted を持たせる（同期のため）。
 // 削除は本当に消さず deleted: true にする（もう一方の端末に「削除した」ことを伝えるため）。
 (function () {
@@ -19,7 +23,8 @@
   const STORAGE_KEY = 'kakeibo-data';
   const RESTORE_BACKUP_KEY = 'kakeibo-data-before-restore'; // 復元の直前の状態
   const DEFAULTS_TIMESTAMP = '2000-01-01T00:00:00.000Z'; // 初期カテゴリーの日時
-  const DATA_VERSION = 1;
+  const DATA_VERSION = 2;
+  const MAX_CARRY = 999999999999; // 持ち越し金の上限（マイナスも可）
   const MAX_AMOUNT = 999999999;
   const MAX_MEMO_LENGTH = 100;
   const MAX_CATEGORY_NAME_LENGTH = 20;
@@ -43,6 +48,7 @@
         deleted: false,
       })),
       transactions: [],
+      quickEntries: [],
       settings: {
         openingBalance: 0,
         lastSyncedAt: null,
@@ -51,7 +57,7 @@
     };
   }
 
-  // 古い形式のデータを、今の形式に変換する（今はバージョン1だけなので確認のみ）
+  // 古い形式のデータを、今の形式に変換する
   function migrate(obj) {
     if (!obj || typeof obj.version !== 'number') {
       throw new Error('データの形式が正しくありません。');
@@ -59,9 +65,14 @@
     if (obj.version > DATA_VERSION) {
       throw new Error('このアプリより新しい形式のデータです。アプリを最新にしてください。');
     }
-    // 例：将来 version 2 を作ったら、ここに「1 → 2 の変換」を書く
+    // 1 → 2：「家計簿入力」の記録を入れる場所を足す（今までの記録・カテゴリーはそのまま）
+    if (obj.version === 1) {
+      obj.quickEntries = [];
+      obj.version = 2;
+    }
     obj.categories = Array.isArray(obj.categories) ? obj.categories : [];
     obj.transactions = Array.isArray(obj.transactions) ? obj.transactions : [];
+    obj.quickEntries = Array.isArray(obj.quickEntries) ? obj.quickEntries : [];
     obj.settings = obj.settings || {};
     return obj;
   }
@@ -304,6 +315,102 @@
     });
   }
 
+  // ---- 「家計簿入力」の記録（1日1件） ----
+
+  const QUICK_ITEM_IDS = () => new Set([...K.quickItems.expenses, ...K.quickItems.incomes].map((i) => i.id));
+  const EXPENSE_IDS = () => new Set(K.quickItems.expenses.map((i) => i.id));
+
+  function quickId(date) {
+    return `q-${date}`;
+  }
+
+  function checkDate(date) {
+    const [y, m, d] = String(date || '').split('-').map(Number);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date)) || U.toDateStr(new Date(y, m - 1, d)) !== date) {
+      throw new Error('日付が正しくありません。');
+    }
+  }
+
+  // 1件の合計を計算する
+  function totalsOf(entry) {
+    const expIds = EXPENSE_IDS();
+    let expense = 0;
+    let income = 0;
+    for (const [id, amount] of Object.entries(entry.amounts)) {
+      if (expIds.has(id)) expense += amount;
+      else income += amount;
+    }
+    return { expense, income, net: income - expense };
+  }
+
+  // 日付の古い順に、持ち越し金を計算した一覧を返す（削除したものは含めない）
+  // いちばん古い記録だけ、「前回の持ち越し金」に openingCarry を使う
+  function getQuickLedger() {
+    const list = data.quickEntries.filter((e) => !e.deleted).sort((a, b) => (a.date < b.date ? -1 : 1));
+    let carry = null;
+    return list.map((e) => {
+      const t = totalsOf(e);
+      const prevCarry = carry === null ? e.openingCarry || 0 : carry;
+      carry = prevCarry + t.net;
+      return { ...e, amounts: { ...e.amounts }, ...t, prevCarry, totalCarry: carry };
+    });
+  }
+
+  function getQuickEntry(date) {
+    const e = data.quickEntries.find((x) => x.id === quickId(date) && !x.deleted);
+    return e ? { ...e, amounts: { ...e.amounts } } : null;
+  }
+
+  // その日より前で、いちばん近い記録の「合計 持ち越し金」。前の記録がなければ null
+  function getPrevCarry(date) {
+    const before = getQuickLedger().filter((e) => e.date < date);
+    return before.length ? before[before.length - 1].totalCarry : null;
+  }
+
+  // 保存する。同じ日の記録があれば、それを直す（2件にはならない）
+  function saveQuickEntry({ date, amounts, openingCarry }) {
+    checkDate(date);
+    const ids = QUICK_ITEM_IDS();
+    const clean = {};
+    for (const [id, value] of Object.entries(amounts || {})) {
+      if (!ids.has(id)) continue;
+      const n = Number(value);
+      if (n === 0) continue;
+      if (!Number.isSafeInteger(n) || n < 0 || n > MAX_AMOUNT) {
+        throw new Error('金額は0以上の整数で入力してください。');
+      }
+      clean[id] = n;
+    }
+    if (Object.keys(clean).length === 0) {
+      throw new Error('金額を1つ以上入力してください。');
+    }
+    const carry = Number(openingCarry || 0);
+    if (!Number.isSafeInteger(carry) || Math.abs(carry) > MAX_CARRY) {
+      throw new Error('前回の持ち越し金が正しくありません。');
+    }
+
+    const now = U.nowIso();
+    const id = quickId(date);
+    commit((d) => {
+      const existing = d.quickEntries.find((x) => x.id === id);
+      if (existing) {
+        Object.assign(existing, { amounts: clean, openingCarry: carry, deleted: false, updatedAt: now });
+      } else {
+        d.quickEntries.push({ id, date, amounts: clean, openingCarry: carry, createdAt: now, updatedAt: now, deleted: false });
+      }
+    });
+    return getQuickEntry(date);
+  }
+
+  function deleteQuickEntry(date) {
+    if (!getQuickEntry(date)) throw new Error('記録が見つかりませんでした。');
+    commit((d) => {
+      const e = d.quickEntries.find((x) => x.id === quickId(date));
+      e.deleted = true;
+      e.updatedAt = U.nowIso();
+    });
+  }
+
   // すべてのデータのコピーを返す（バックアップ・同期用）
   function exportData() {
     return JSON.parse(JSON.stringify(data));
@@ -318,7 +425,7 @@
       lastImportedAt: data.settings.lastImportedAt || null,
       // 一度も書き出していないのに記録がある場合（Step3 までのデータなど）も「変更あり」とする
       hasUnexportedChanges:
-        Boolean(data.settings.hasUnexportedChanges) || (!data.settings.lastExportedAt && data.transactions.length > 0),
+        Boolean(data.settings.hasUnexportedChanges) || (!data.settings.lastExportedAt && (data.transactions.length > 0 || data.quickEntries.length > 0)),
     };
   }
 
@@ -340,6 +447,7 @@
       (d) => {
         d.categories = merged.categories;
         d.transactions = merged.transactions;
+        d.quickEntries = merged.quickEntries;
         d.settings.lastImportedAt = U.nowIso();
         // この端末にしかない変更がなければ、ファイルと同じ内容になっている
         d.settings.hasUnexportedChanges = merged.stats.localNewer > 0;
@@ -370,6 +478,7 @@
     commit((d) => {
       d.categories = prepared.categories;
       d.transactions = prepared.transactions;
+      d.quickEntries = prepared.quickEntries;
     });
     return { dropped: prepared.dropped };
   }
@@ -387,6 +496,7 @@
     commit((d) => {
       d.categories = previous.categories;
       d.transactions = previous.transactions;
+      d.quickEntries = previous.quickEntries;
     });
     localStorage.removeItem(RESTORE_BACKUP_KEY);
   }
@@ -406,6 +516,11 @@
     addTransaction,
     updateTransaction,
     deleteTransaction,
+    getQuickLedger,
+    getQuickEntry,
+    getPrevCarry,
+    saveQuickEntry,
+    deleteQuickEntry,
     exportData,
     getSyncStatus,
     markExported,

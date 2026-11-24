@@ -1,0 +1,364 @@
+/* 家計簿全体の見た目（黒い画面）と、「家計簿入力」画面の見た目 */
+
+/* ---- 黒い画面：今までの画面（設定など）の色もここで黒に合わせる ---- */
+body.theme-black {
+  /* 英語と数字は Futura、日本語はヒラギノ（Futura に日本語の文字はないため、自動で切り替わる） */
+  --font-title: "Futura", "Avenir Next", "Helvetica Neue", sans-serif;
+  font-family: "Futura", "Avenir Next", "Hiragino Sans", "Hiragino Kaku Gothic ProN", -apple-system, BlinkMacSystemFont, "Noto Sans JP", sans-serif;
+  --bg: #000;
+  --surface: #141518;
+  --surface-2: #1f2125;
+  --text: #f2f3f5;
+  --text-muted: #8b9097;
+  --border: #2a2d32;
+  --primary: #5fb39b;
+  --primary-text: #0d1512;
+  --income: #5cc394;
+  --danger: #ff6b62;
+  --fixed: #a597f5;
+  --variable: #f0a45c;
+  --shadow: none;
+
+  --q-bg: #000;
+  --q-text: #f2f3f5;
+  --q-sub: #d7d9dc;
+  --q-muted: #8b9097;
+  --q-exp: #ff6b62;   /* 支出（赤） */
+  --q-inc: #6ea6ff;   /* 収入（青） */
+  --q-carry: #f5d24f; /* 持ち越し（黄） */
+  --main-nav-h: 52px;
+  --q-save-h: 76px;
+  color-scheme: dark;
+}
+
+/* 今までの下のタブと［＋］ボタンは使わないので隠す（プログラムは残している） */
+body.theme-black .bottom-nav,
+body.theme-black .fab {
+  display: none;
+}
+
+body.theme-black .screen {
+  padding-bottom: calc(var(--main-nav-h) + env(safe-area-inset-bottom, 0px) + 32px);
+}
+
+body.theme-black .toast {
+  bottom: calc(var(--main-nav-h) + env(safe-area-inset-bottom, 0px) + 12px);
+}
+
+/* 「家計簿入力」画面では、上のヘッダーも隠す */
+body.is-quick .app-header {
+  display: none;
+}
+
+body.is-quick .screen {
+  padding: 0 16px calc(var(--main-nav-h) + var(--q-save-h) + env(safe-area-inset-bottom, 0px) + 24px);
+}
+
+body.is-quick .toast {
+  bottom: calc(var(--main-nav-h) + var(--q-save-h) + env(safe-area-inset-bottom, 0px) + 8px);
+}
+
+/* ---- 下のメニュー（入力／生活収支表／履歴／設定） ---- */
+.main-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 11;
+  background: var(--q-bg);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.main-nav__inner {
+  max-width: 560px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.main-nav__btn {
+  height: var(--main-nav-h);
+  border: 0;
+  background: none;
+  color: var(--q-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.main-nav__btn.is-active {
+  color: var(--q-text);
+  font-weight: 700;
+}
+
+/* ---- 上：タイトルと日付 ---- */
+.q-top {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: calc(env(safe-area-inset-top, 0px) + 18px) 0 6px;
+}
+
+/* タイトル「KAKEIBO」：真ん中・大文字・字間広め（Futura は iPhone と Mac に最初から入っている） */
+.q-top__title,
+body.theme-black .app-title {
+  margin: 0;
+  font-family: var(--font-title);
+  font-size: 30px;
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: 0.35em;
+  padding-left: 0.35em; /* 字間のぶん、見た目の真ん中をそろえる */
+  text-transform: uppercase;
+}
+
+.q-date {
+  position: relative;
+  margin-top: 4px;
+  padding: 6px 12px;
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  color: var(--q-muted);
+  cursor: pointer;
+}
+
+.q-date__input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  opacity: 0;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+/* ---- 支出・収入の2列（項目名が上、金額がその下） ---- */
+.q-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  margin-top: 8px;
+  align-items: stretch;
+}
+
+.q-col--exp {
+  padding-right: 10px;
+}
+
+/* 支出と収入の間の線 */
+.q-col--inc {
+  padding-left: 10px;
+  border-left: 1px solid #2c2f34;
+}
+
+.q-col__title {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+
+.q-col--exp .q-col__title,
+.q-col--exp .q-sum,
+.q-col--exp .q-row__input.has-value,
+.q-col--exp .q-row__input:focus {
+  color: var(--q-exp);
+  border-bottom-color: var(--q-exp);
+}
+
+.q-col--inc .q-col__title,
+.q-col--inc .q-sum,
+.q-col--inc .q-row__input.has-value,
+.q-col--inc .q-row__input:focus {
+  color: var(--q-inc);
+  border-bottom-color: var(--q-inc);
+}
+
+.q-row + .q-row {
+  margin-top: 6px;
+}
+
+/* 項目名（上） */
+.q-row__name {
+  display: block;
+  font-size: 12px;
+  line-height: 1.3;
+  color: #a9adb3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.q-row__name small {
+  margin-left: 4px;
+  font-size: 9px;
+  color: var(--q-muted);
+}
+
+/* 金額（下）。下にだけ細い線 */
+.q-row__input {
+  display: block;
+  width: 100%;
+  padding: 2px 0 4px;
+  border: 0;
+  border-bottom: 1px solid #2c2f34;
+  border-radius: 0;
+  background: none;
+  color: var(--q-text);
+  font: inherit;
+  font-size: 17px; /* 16px 以上にして、iPhone で入力時に画面が拡大されないようにする */
+  font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.q-row__input:focus {
+  outline: none;
+}
+
+.q-sum {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid #2c2f34;
+  font-weight: 700;
+}
+
+.q-sum span {
+  font-size: 12px;
+}
+
+.q-sum output {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- 持ち越し：1つずつの行、合計だけ黄色で大きく ---- */
+.q-carry {
+  margin-top: 20px;
+}
+
+.q-carry__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 3px 0;
+  font-size: 13px;
+  color: var(--q-muted);
+}
+
+.q-carry__row output {
+  color: var(--q-sub);
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.q-carry__row output.is-plus {
+  color: var(--q-inc);
+}
+
+.q-carry__row output.is-minus {
+  color: var(--q-exp);
+}
+
+.q-carry__total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-top: 4px;
+  color: var(--q-carry);
+  font-weight: 700;
+}
+
+.q-carry__total span {
+  font-size: 15px;
+}
+
+.q-carry__total output {
+  font-size: 32px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- 下：保存ボタンとメニュー（画面の下に固定） ---- */
+.q-dock {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--main-nav-h) + env(safe-area-inset-bottom, 0px));
+  z-index: 10;
+  max-width: 560px;
+  margin: 0 auto;
+  padding-top: 8px;
+  background: var(--q-bg);
+}
+
+.q-save {
+  display: block;
+  width: calc(100% - 32px);
+  margin: 0 16px 8px;
+  padding: 15px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--q-text);
+  color: #000;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.q-save:active {
+  opacity: 0.8;
+}
+
+/* ---- 保存済みのお知らせ・エラー ---- */
+.q-status {
+  margin: 0;
+  font-size: 12px;
+  color: var(--q-carry);
+}
+
+.q-status:empty {
+  display: none;
+}
+
+.q-error {
+  margin: 0 16px 8px;
+  font-size: 13px;
+  color: var(--q-exp);
+}
+
+/* いちばん最初の1回だけ出す「前回の持ち越し金」の入力欄 */
+.q-carry__opening {
+  width: 88px;
+  padding: 2px 0;
+  border: 0;
+  border-bottom: 1px solid var(--q-carry);
+  border-radius: 0;
+  background: none;
+  color: var(--q-text);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.q-carry__opening:focus {
+  outline: none;
+}
+
+/* ---- 設定画面などの上のヘッダーも、タイトルを真ん中に ---- */
+body.theme-black .app-header__inner {
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+body.theme-black .app-title {
+  font-size: 24px;
+}
+
+body.theme-black .app-subtitle {
+  font-size: 13px;
+}

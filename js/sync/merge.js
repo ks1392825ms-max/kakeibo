@@ -6,7 +6,8 @@
 //   format: "kakeibo-sync",       家計簿のファイルであることの目印
 //   kind: "sync" または "backup",
 //   exportedAt: "2026-09-30T...",  書き出した日時
-//   data: { version, categories: [...], transactions: [...] }
+//   data: { version, categories: [...], transactions: [...], quickEntries: [...] }
+//   （version 1 のファイルには quickEntries がない。読み込むときは「0件」として扱う）
 // }
 (function () {
   'use strict';
@@ -14,7 +15,7 @@
   const U = K.utils;
 
   const FORMAT = 'kakeibo-sync';
-  const DATA_VERSION = 1;
+  const DATA_VERSION = 2;
   const GROUPS = ['income', 'fixed', 'variable'];
   const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
 
@@ -28,6 +29,7 @@
         version: data.version,
         categories: data.categories,
         transactions: data.transactions,
+        quickEntries: data.quickEntries || [],
       },
     };
   }
@@ -102,6 +104,28 @@
     };
   }
 
+  // 「家計簿入力」の記録のチェック
+  function cleanQuickEntry(e) {
+    if (!e || typeof e !== 'object' || !isValidDate(e.date) || e.id !== `q-${e.date}`) return null;
+    if (!e.amounts || typeof e.amounts !== 'object' || Array.isArray(e.amounts)) return null;
+    const amounts = {};
+    for (const [id, n] of Object.entries(e.amounts)) {
+      if (!/^q_(exp|inc)_[a-z_]{1,60}$/.test(id) || !Number.isSafeInteger(n) || n <= 0 || n > 999999999) return null;
+      amounts[id] = n;
+    }
+    const openingCarry = e.openingCarry === undefined ? 0 : e.openingCarry;
+    if (
+      !Number.isSafeInteger(openingCarry) ||
+      Math.abs(openingCarry) > 999999999999 ||
+      !ISO_RE.test(e.createdAt) ||
+      !ISO_RE.test(e.updatedAt) ||
+      typeof e.deleted !== 'boolean'
+    ) {
+      return null;
+    }
+    return { id: e.id, date: e.date, amounts, openingCarry, createdAt: e.createdAt, updatedAt: e.updatedAt, deleted: e.deleted };
+  }
+
   // ファイルの文字を読み取り、チェック済みのデータを返す。家計簿のファイルでなければエラー
   // 戻り値：{ kind, exportedAt, data: { categories, transactions }, skipped（取り込まなかった件数） }
   function parseFile(text) {
@@ -120,8 +144,10 @@
 
     const rawCategories = Array.isArray(obj.data.categories) ? obj.data.categories : [];
     const rawTransactions = Array.isArray(obj.data.transactions) ? obj.data.transactions : [];
+    const rawQuick = Array.isArray(obj.data.quickEntries) ? obj.data.quickEntries : [];
     const categories = rawCategories.map(cleanCategory).filter(Boolean);
     const transactions = rawTransactions.map(cleanTransaction).filter(Boolean);
+    const quickEntries = rawQuick.map(cleanQuickEntry).filter(Boolean);
     if (categories.length === 0) {
       throw new Error('ファイルにカテゴリーが入っていません。家計簿のファイルか確認してください。');
     }
@@ -129,8 +155,11 @@
     return {
       kind: obj.kind === 'backup' ? 'backup' : 'sync',
       exportedAt: ISO_RE.test(obj.exportedAt) ? obj.exportedAt : null,
-      data: { categories, transactions },
-      skipped: rawCategories.length - categories.length + (rawTransactions.length - transactions.length),
+      data: { categories, transactions, quickEntries },
+      skipped:
+        rawCategories.length - categories.length +
+        (rawTransactions.length - transactions.length) +
+        (rawQuick.length - quickEntries.length),
     };
   }
 
@@ -176,21 +205,23 @@
   }
 
   // この端末のデータ（local）と、ファイルのデータ（incoming）を合体する
-  // 戻り値：{ categories, transactions, stats: { added, updated, localNewer, dropped } }
+  // 戻り値：{ categories, transactions, quickEntries, stats: { added, updated, localNewer, dropped } }
   // localNewer：ファイルにない、またはファイルより新しい、この端末の記録の数
   function mergeData(local, incoming) {
     const stats = { added: 0, updated: 0, localNewer: 0, dropped: 0 };
     const categories = ensureEachGroup(mergeList(local.categories, incoming.categories, stats));
     const { kept, dropped } = dropOrphans(mergeList(local.transactions, incoming.transactions, stats), categories);
     stats.dropped = dropped;
-    return { categories, transactions: kept, stats };
+    // 「家計簿入力」の記録は id が日付なので、同じ日は「あとから直したほう」が残る
+    const quickEntries = mergeList(local.quickEntries || [], incoming.quickEntries || [], stats);
+    return { categories, transactions: kept, quickEntries, stats };
   }
 
   // 復元用：ファイルのデータだけを整える（合体しない）
   function prepareRestore(incoming) {
     const categories = ensureEachGroup(incoming.categories.map((c) => ({ ...c })));
     const { kept, dropped } = dropOrphans(incoming.transactions, categories);
-    return { categories, transactions: kept, dropped };
+    return { categories, transactions: kept, quickEntries: (incoming.quickEntries || []).map((e) => ({ ...e })), dropped };
   }
 
   K.sync = K.sync || {};

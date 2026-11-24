@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <!-- 外部への通信（fetch など）をすべて禁止する安全装置。同期機能を追加するときだけ、確認のうえで変更する -->
   <meta http-equiv="Content-Security-Policy" content="connect-src 'none'; form-action 'none'">
-  <meta name="theme-color" content="#f6f5f2" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
   <title>家計簿</title>
   <!-- iPhone の「ホーム画面に追加」用（アイコン・アプリ名・全画面表示） -->
   <link rel="manifest" href="manifest.json">
@@ -14,12 +14,15 @@
   <link rel="icon" type="image/png" href="icons/icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="家計簿">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/quick.css">
+  <link rel="stylesheet" href="css/sheet.css">
 </head>
-<body>
+<body class="theme-black">
   <header class="app-header">
     <div class="app-header__inner">
-      <h1 class="app-title">家計簿</h1>
+      <h1 class="app-title" aria-label="家計簿">Kakeibo</h1>
       <span class="app-subtitle" id="screen-title"></span>
     </div>
   </header>
@@ -46,7 +49,17 @@
     </div>
   </nav>
 
-  <!-- どの画面からでも入力画面を開けるボタン -->
+  <!-- メニュー（入力／生活収支表／履歴／設定）。上の今までのタブと下の［＋］は、使わないので css/quick.css で隠している -->
+  <nav class="main-nav" aria-label="メニュー">
+    <div class="main-nav__inner">
+      <button type="button" class="main-nav__btn" data-main="quick">入力</button>
+      <button type="button" class="main-nav__btn" data-main="sheet">生活収支表</button>
+      <button type="button" class="main-nav__btn" data-main="history">履歴</button>
+      <button type="button" class="main-nav__btn" data-main="settings">設定</button>
+    </div>
+  </nav>
+
+  <!-- どの画面からでも入力画面を開けるボタン（今は隠している） -->
   <button type="button" class="fab" id="fab" aria-label="入力する">＋</button>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -54,6 +67,7 @@
   <!-- 読み込む順番が大事：共通の道具 → 初期データ → 保存 → 計算・グラフ → 画面 → 起動 -->
   <script src="js/utils.js" defer></script>
   <script src="js/data/defaults.js" defer></script>
+  <script src="js/data/quick-items.js" defer></script>
   <script src="js/storage.js" defer></script>
   <script src="js/sync/merge.js" defer></script>
   <script src="js/sync/file.js" defer></script>
@@ -65,6 +79,9 @@
   <script src="js/screens/summary.js" defer></script>
   <script src="js/screens/balance.js" defer></script>
   <script src="js/screens/settings.js" defer></script>
+  <script src="js/screens/quick.js" defer></script>
+  <script src="js/screens/sheet.js" defer></script>
+  <script src="js/screens/history.js" defer></script>
   <script src="js/app.js" defer></script>
 </body>
 </html>

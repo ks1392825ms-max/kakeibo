@@ -324,8 +324,9 @@
       try {
         const parsed = K.sync.parseFile(await K.sync.readText(file));
         const count = parsed.data.transactions.filter((t) => !t.deleted).length;
+        const quickCount = parsed.data.quickEntries.filter((e) => !e.deleted).length;
         const message =
-          `今のデータを、このファイルの内容（記録 ${count}件）で置き換えます。よろしいですか？\n` +
+          `今のデータを、このファイルの内容（記録 ${count}件・家計簿入力 ${quickCount}日分）で置き換えます。よろしいですか？\n` +
           '置き換える前の状態は「復元を取り消す」で戻せます。';
         if (!window.confirm(message)) return;
         const result = K.storage.restoreFromFile(parsed.data);
